@@ -11,6 +11,7 @@ env/
 # Secrets
 .env
 .env.*
+!.env.example
 
 # Tool caches
 .deepeval/
