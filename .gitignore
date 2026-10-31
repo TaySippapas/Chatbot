@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Secrets
+.env
+.env.*
+
+# Tool caches
+.deepeval/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
