@@ -10,6 +10,8 @@ CASES_PATH = ROOT / "cases.jsonl"
 HANDBOOK_PATH = ROOT / "policy_handbook.md"
 SCHEMA_PATH = ROOT / "db" / "schema.sql"
 
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3.5-4B")
+
 
 def database_url() -> str:
     user = os.getenv("POSTGRES_USER", "quillmark")

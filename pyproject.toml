@@ -6,6 +6,10 @@ requires-python = ">=3.11"
 dependencies = [
     "psycopg[binary]>=3.1",
     "python-dotenv>=1.0",
+    "torch>=2.4",
+    "transformers>=5.22",
+    "accelerate>=1.0",
+    "bitsandbytes>=0.45",
 ]
 
 [build-system]
