@@ -2,10 +2,8 @@
 
 Usage: python -m quillmark_bot.cag.knowledge   (prints the text and its token count)
 """
-from collections import defaultdict
-
 from quillmark_bot.config import CASES_PATH, HANDBOOK_PATH
-from quillmark_bot.data.incidents import ROOT_CAUSES
+from quillmark_bot.data.incidents import incident_entries
 from quillmark_bot.data.load import load_cases, load_policies
 
 RULES = """\
@@ -24,6 +22,8 @@ policy that sets that fee.
 - Only send the customer to a team, channel or department that the handbook names for that purpose.
 
 Known incidents
+- Incidents only matter when the customer reports a problem. For general questions about a fee, rate or \
+rule, answer from the policies without mentioning incidents or asking for a branch or date.
 - An incident applies only if all of these match: the customer's product is listed, the customer's branch \
 is covered (an incident marked "only" does not apply to any other branch), and the problem happened \
 within the incident's reported dates.
@@ -70,44 +70,9 @@ reversed under the Service Disruption Remediation policy [POL-DSP-04], and the r
 yearly courtesy waiver [POL-CRD-06]. Please update the app to version 6.2.1 or later."""
 
 
-def incident_entries(cases: list[dict]) -> str:
-    """One entry per incident: who was affected and when (from the cases) plus the written root cause."""
-    by_incident = defaultdict(list)
-    for c in cases:
-        if c["incident_id"]:
-            by_incident[c["incident_id"]].append(c)
-
-    missing = by_incident.keys() - ROOT_CAUSES.keys()
-    if missing:
-        raise ValueError(f"No root cause written for incidents: {sorted(missing)}")
-
-    # Spelled-out "applies to / does not apply to" lines: the 4B model misjudges an incident's scope
-    # when the branch limit is only a word inside a sentence
-    all_branches = {c["branch"] for c in cases}
-    entries = []
-    for incident_id, group in sorted(by_incident.items()):
-        branches = {c["branch"] for c in group}
-        local = branches != all_branches
-        products = " or ".join(sorted({c["product"] for c in group}))
-        issues = ", ".join(sorted({c["issue"] for c in group}))
-        dates = sorted(c["opened_date"] for c in group)
-        policies = ", ".join(sorted({p for c in group for p in c["related_policies"]}))
-        where = f"at the {' or '.join(sorted(branches))} branch only" if local else "at any branch"
-        not_applies = "other branches, other products" if local else "other products"
-        entries.append(
-            f"[{incident_id}] {issues}\n"
-            f"Applies to: {products} customers {where}, for problems from {dates[0]} to {dates[-1]} "
-            f"({len(group)} cases).\n"
-            f"Does not apply to: {not_applies}, or problems outside those dates. Use the routine policies for those.\n"
-            f"What happened and the resolution: {ROOT_CAUSES[incident_id]}\n"
-            f"Policies: {policies}"
-        )
-    return "\n\n".join(entries)
-
-
 def build_knowledge() -> str:
     handbook = HANDBOOK_PATH.read_text(encoding="utf-8").strip()
-    incidents = incident_entries(load_cases(CASES_PATH))
+    incidents = "\n\n".join(text for _, text in incident_entries(load_cases(CASES_PATH)))
 
     policy_ids = {p["policy_id"] for p in load_policies(HANDBOOK_PATH)}
     unknown = {pid for line in incidents.splitlines() if line.startswith("Policies:")

@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 # Root causes are only written down in agent notes, in many template variants per incident,
 # so they are summarized here by hand from those notes (see notebooks/01_eda.ipynb §8).
 ROOT_CAUSES = {
@@ -52,3 +54,41 @@ FROM (
 ) s
 WHERE i.incident_id = s.incident_id
 """
+
+
+def incident_entries(cases: list[dict]) -> list[tuple[str, str]]:
+    """(incident_id, text) per incident: who was affected and when (from the cases) plus the root cause.
+
+    Used as-is by both bots: CAG caches all of them, RAG indexes each as a document.
+    """
+    by_incident = defaultdict(list)
+    for c in cases:
+        if c["incident_id"]:
+            by_incident[c["incident_id"]].append(c)
+
+    missing = by_incident.keys() - ROOT_CAUSES.keys()
+    if missing:
+        raise ValueError(f"No root cause written for incidents: {sorted(missing)}")
+
+    # Spelled-out "applies to / does not apply to" lines: the 4B model misjudges an incident's scope
+    # when the branch limit is only a word inside a sentence
+    all_branches = {c["branch"] for c in cases}
+    entries = []
+    for incident_id, group in sorted(by_incident.items()):
+        branches = {c["branch"] for c in group}
+        local = branches != all_branches
+        products = " or ".join(sorted({c["product"] for c in group}))
+        issues = ", ".join(sorted({c["issue"] for c in group}))
+        dates = sorted(c["opened_date"] for c in group)
+        policies = ", ".join(sorted({p for c in group for p in c["related_policies"]}))
+        where = f"at the {' or '.join(sorted(branches))} branch only" if local else "at any branch"
+        not_applies = "other branches, other products" if local else "other products"
+        entries.append((incident_id, (
+            f"[{incident_id}] {issues}\n"
+            f"Applies to: {products} customers {where}, for problems from {dates[0]} to {dates[-1]} "
+            f"({len(group)} cases).\n"
+            f"Does not apply to: {not_applies}, or problems outside those dates. Use the routine policies for those.\n"
+            f"What happened and the resolution: {ROOT_CAUSES[incident_id]}\n"
+            f"Policies: {policies}"
+        )))
+    return entries

@@ -12,6 +12,10 @@ SCHEMA_PATH = ROOT / "db" / "schema.sql"
 
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3.5-4B")
 
+INDEX_DIR = ROOT / "data" / "index"
+EMBED_MODEL_ID = os.getenv("EMBED_MODEL_ID", "BAAI/bge-base-en-v1.5")
+RERANK_MODEL_ID = os.getenv("RERANK_MODEL_ID", "BAAI/bge-reranker-base")
+
 
 def database_url() -> str:
     user = os.getenv("POSTGRES_USER", "quillmark")

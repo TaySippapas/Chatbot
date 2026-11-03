@@ -13,6 +13,9 @@ env/
 .env.*
 !.env.example
 
+# Built artifacts (rebuild with python -m quillmark_bot.rag.index)
+data/index/
+
 # Tool caches
 .deepeval/
 

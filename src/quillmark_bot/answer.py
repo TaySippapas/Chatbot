@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 ID_PATTERN = re.compile(r"\b(?:POL-[A-Z]{3}-\d{2}|INC-\d{4}-\d{2}|QM-C-\d{6})\b")
 
@@ -12,6 +12,8 @@ class Answer:
     output_tokens: int
     seconds_to_first_token: float
     seconds_total: float
+    sources: list[str] = field(default_factory=list)  # IDs of documents retrieved into the prompt (RAG)
+    seconds_retrieval: float = 0.0
 
     @property
     def computed_prompt_tokens(self) -> int:
