@@ -12,6 +12,7 @@ dependencies = [
     "bitsandbytes>=0.45",
     "sentence-transformers>=5.0",
     "rank-bm25>=0.2",
+    "streamlit>=1.45",
 ]
 
 [build-system]
