@@ -18,7 +18,7 @@ CREATE TABLE incidents (
     first_opened    DATE,
     last_opened     DATE,
     case_count      INTEGER,
-    total_refunded  INTEGER,
+    total_refunded  NUMERIC(12, 2),
     root_cause      TEXT NOT NULL
 );
 
@@ -37,7 +37,7 @@ CREATE TABLE cases (
     resolution          TEXT NOT NULL,
     outcome             TEXT NOT NULL CHECK (outcome IN ('favorable', 'partial', 'unfavorable', 'info')),
     satisfaction        INTEGER NOT NULL CHECK (satisfaction BETWEEN 1 AND 5),
-    amount_refunded     INTEGER NOT NULL CHECK (amount_refunded >= 0),   -- dollars
+    amount_refunded     NUMERIC(10, 2) NOT NULL CHECK (amount_refunded >= 0),   -- dollars and cents
     incident_id         TEXT REFERENCES incidents,
     is_incident         BOOLEAN GENERATED ALWAYS AS (incident_id IS NOT NULL) STORED,
     meta                JSONB NOT NULL DEFAULT '{}',                     -- sparse, issue-specific keys

@@ -46,23 +46,26 @@ Bank questions."""
 
 # Worked examples for the patterns the 4B model got wrong in testing: applying an incident outside its
 # scope, borrowing a waiver from another fee, and inventing processes the handbook doesn't describe.
+# Each example's lesson is a label before it: notes after an answer got copied into real answers.
 EXAMPLES = """\
 Examples of good answers
 
+Example 1. An incident outside its dates is not mentioned (January 2025 is before the app lockout incident).
 Customer: Today's date: 2026-11-01. The app locked me out after one wrong password in January 2025. Why?
 Assistant: Online and app access locks for 30 minutes after 5 failed sign-in attempts [POL-DIG-01]. You can \
 unlock it right away with a one-time code sent to the phone on file, or by calling customer service or visiting \
 a branch with a government ID if that phone number is out of date [POL-DIG-01].
-(The app lockout incident is not mentioned: January 2025 is outside its dates.)
 
+Example 2. Only the fee's own policy says how to avoid it; waivers from other fees are not borrowed.
 Customer: Today's date: 2026-11-01. How can I avoid the stop payment fee?
 Assistant: A stop payment order costs $30, but it is free when you place it online for a single item \
 [POL-FEE-01]. So for one check or payment, placing the stop online avoids the fee.
-(Only the fee schedule's own way to avoid this fee is given, not waivers from other fees.)
 
+Example 3. A question the handbook does not cover.
 Customer: Today's date: 2026-11-01. Can I open a business account?
 Assistant: I don't have information about business accounts. I can connect you with an agent who can help.
 
+Example 4. An incident that applies: product, date and cause all match.
 Customer: Today's date: 2026-11-01. I couldn't sign in to the app on July 9, 2026, so my Spark Card payment \
 was late and I got a late fee. Can I get it back?
 Assistant: Yes. This matches the app 6.2.0 sign-in problem [INC-2026-07]: late fees caused by the lockout are \
@@ -70,7 +73,8 @@ reversed under the Service Disruption Remediation policy [POL-DSP-04], and the r
 yearly courtesy waiver [POL-CRD-06]. Please update the app to version 6.2.1 or later."""
 
 
-def build_knowledge() -> str:
+def build_knowledge(rules: str = RULES) -> str:
+    """Rules + worked examples + the handbook verbatim + known incidents. Other bots pass their own rules."""
     handbook = HANDBOOK_PATH.read_text(encoding="utf-8").strip()
     incidents = "\n\n".join(text for _, text in incident_entries(load_cases(CASES_PATH)))
 
@@ -81,7 +85,7 @@ def build_knowledge() -> str:
         raise ValueError(f"Incidents cite policies missing from the handbook: {sorted(unknown)}")
 
     return (
-        f"{RULES}\n\n{EXAMPLES}\n\n"
+        f"{rules}\n\n{EXAMPLES}\n\n"
         f"<policy_handbook>\n{handbook}\n</policy_handbook>\n\n"
         f"<known_incidents>\n{incidents}\n</known_incidents>"
     )

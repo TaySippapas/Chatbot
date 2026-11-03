@@ -74,11 +74,15 @@ class CAGChatbot:
 
         cached = 0
         cache = None
+        start = time.perf_counter()
         if use_cache:
             cached = self.cached_tokens
             if not torch.equal(input_ids[:, :cached], self.prefix_ids):
                 raise RuntimeError("Prompt no longer starts with the cached knowledge; rebuild the cache")
             cache = copy.deepcopy(self.prefix_cache)
+            # The new part can be long too (the hybrid bot adds past cases and database results), so it is
+            # read in chunks as well; generate() then continues from the last token
+            cache = prefill(self.model, input_ids[:, cached:-1], cache)
 
         return generate_answer(self.model, self.tokenizer, input_ids, cache, cached,
-                               self.max_new_tokens, on_text)
+                               self.max_new_tokens, on_text, start)

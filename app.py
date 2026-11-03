@@ -1,7 +1,10 @@
-"""Streamlit chat UI for the Quillmark Bank support bots: CAG, RAG, or both side by side.
+"""Streamlit chat UI for the Quillmark Bank support bots.
+
+Auto (default) routes each question itself: handbook always, past cases and database figures when needed.
+CAG, RAG and "Compare" are kept for comparing the two approaches.
 
 Usage: streamlit run app.py
-(For RAG, build the index first: python -m quillmark_bot.rag.index)
+(Build the RAG index first: python -m quillmark_bot.rag.index. For figures: docker compose up -d)
 """
 import queue
 import sys
@@ -16,17 +19,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from quillmark_bot.cag.engine import CAGChatbot  # noqa: E402
 from quillmark_bot.cag.knowledge import build_knowledge  # noqa: E402
+from quillmark_bot.hybrid.engine import HybridChatbot  # noqa: E402
 from quillmark_bot.model import load_model  # noqa: E402
 from quillmark_bot.rag.documents import case_documents, knowledge_documents  # noqa: E402
 from quillmark_bot.rag.engine import RAGChatbot  # noqa: E402
 from quillmark_bot.rag.retriever import Retriever  # noqa: E402
 
-MODES = {"CAG": "CAG: whole handbook cached", "RAG": "RAG: retrieved documents", "Both": "Compare both"}
+MODES = {"Auto": "Auto: picks sources per question", "CAG": "CAG only: whole handbook cached",
+         "RAG": "RAG only: retrieved documents", "Both": "Compare CAG and RAG"}
 EXAMPLES = [
     "I was charged twice for the same purchase on March 15. What happens now?",
     "What is the overdraft fee and how can I avoid it?",
-    "I want to dispute a charge but my statement was 75 days ago. Can it still be reviewed?",
-    "How do I activate my new debit card?",
+    "How often do goodwill requests get approved?",
+    "Which branch had the most fraud complaints last year?",
 ]
 
 
@@ -46,9 +51,22 @@ def get_cag() -> CAGChatbot:
 
 
 @st.cache_resource(show_spinner="Loading the retriever...")
+def get_retriever() -> Retriever:
+    return Retriever()
+
+
+@st.cache_resource(show_spinner="Loading the retriever...")
 def get_rag() -> RAGChatbot:
     model, processor = get_model()
-    return RAGChatbot(model, processor, Retriever())
+    return RAGChatbot(model, processor, get_retriever())
+
+
+@st.cache_resource(show_spinner="Caching the handbook, incidents and router...")
+def get_hybrid() -> HybridChatbot:
+    model, processor = get_model()
+    bot = HybridChatbot(model, processor, get_retriever())
+    bot.build_cache()
+    return bot
 
 
 @st.cache_resource
@@ -65,7 +83,7 @@ def documents_by_id() -> dict[str, str]:
     return docs
 
 
-BOTS = {"CAG": get_cag, "RAG": get_rag}
+BOTS = {"Auto": get_hybrid, "CAG": get_cag, "RAG": get_rag}
 
 
 # ---------------------------------------------------------------- helpers
@@ -88,6 +106,7 @@ def stream_answer(bot, question: str, history: list[dict], today: date, outcome:
             with gpu_lock():
                 outcome["answer"] = bot.ask(question, history, on_text=chunks.put, today=today)
                 outcome["retrieval"] = getattr(bot, "last_retrieval", None)
+                outcome["trace"] = getattr(bot, "last_trace", None)
         except Exception as error:  # surfaced in the UI rather than dying silently in the thread
             outcome["error"] = error
         finally:
@@ -101,19 +120,57 @@ def stream_answer(bot, question: str, history: list[dict], today: date, outcome:
 def make_record(name: str, outcome: dict) -> dict:
     """What gets kept in the conversation for one bot's answer."""
     a = outcome["answer"]
-    if name == "CAG":
+    trace = outcome.get("trace")
+    if name == "Auto":
+        stats = (f"Auto · route {trace.route.seconds:.1f} s · read {a.computed_prompt_tokens:,} new tokens "
+                 f"({a.cached_tokens:,} from cache) · first word {a.seconds_to_first_token:.1f} s · "
+                 f"{a.seconds_total:.1f} s answering")
+    elif name == "CAG":
         stats = (f"CAG · read {a.computed_prompt_tokens} new tokens ({a.cached_tokens:,} from cache) · "
                  f"first word {a.seconds_to_first_token:.1f} s · {a.seconds_total:.1f} s total")
     else:
         stats = (f"RAG · retrieval {a.seconds_retrieval:.2f} s · read {a.prompt_tokens:,} tokens · "
                  f"first word {a.seconds_to_first_token:.1f} s · {a.seconds_total:.1f} s total")
-    retrieval = outcome.get("retrieval")
+    retrieval = outcome.get("retrieval") or (trace.retrieval if trace else None)
     retrieved = [(h.id, h.score) for h in retrieval.knowledge + retrieval.cases] if retrieval else []
-    return {"text": a.text, "cited": a.cited_ids, "stats": stats, "retrieved": retrieved}
+    record = {"text": a.text, "cited": a.cited_ids, "stats": stats, "retrieved": retrieved}
+    if trace:  # plain values only: the conversation is kept in session state
+        route = trace.route
+        record["route"] = {
+            "decided_by": route.decided_by, "reason": route.reason, "llm_output": route.llm_output,
+            "uses": ["handbook (cached)"] + (["database"] if trace.data else []) + (["past cases"] if trace.retrieval else []),
+        }
+        if trace.data:
+            record["data"] = {"description": trace.data.description, "sql": trace.data.sql,
+                              "params": trace.data.params, "rows": trace.data.rows, "error": trace.data.error,
+                              "seconds": trace.seconds_data}
+    return record
+
+
+def show_route(record: dict) -> None:
+    """Auto mode: which sources were used and why, plus the exact query that ran."""
+    route = record["route"]
+    with st.expander(f"How this was answered: {' + '.join(route['uses'])}"):
+        st.markdown(f"**Route** decided by {route['decided_by']}: {md(route['reason'])}")
+        if route["llm_output"]:
+            st.markdown("The router model's decision form:")
+            st.code(route["llm_output"].strip(), language="json")
+        data = record.get("data")
+        if data:
+            st.markdown(f"**Database query** ({data['seconds']:.2f} s): {md(data['description'])}")
+            if data["sql"]:
+                st.code(data["sql"], language="sql")
+                st.caption(f"Parameters: {data['params']}")
+            if data["error"]:
+                st.error(f"The database could not be reached: {data['error']}")
+            elif data["rows"]:
+                st.dataframe(data["rows"], hide_index=True)
 
 
 def show_details(record: dict) -> None:
     st.caption(record["stats"])
+    if "route" in record:
+        show_route(record)
     docs = documents_by_id()
     if record["cited"]:
         with st.expander(f"Cited: {', '.join(record['cited'])}"):
@@ -167,6 +224,8 @@ with st.sidebar:
         st.rerun()
     st.divider()
     st.markdown(
+        "**Auto** always has the handbook and incidents cached, and per question adds similar past "
+        "cases and/or figures from the case database, as its router decides.\n\n"
         "**CAG** reads the whole policy handbook and the known incidents once and keeps them cached, "
         "so each question only adds a few tokens.\n\n"
         "**RAG** searches the policies, incidents and 5,000 past cases for each question and gives "
@@ -176,8 +235,8 @@ with st.sidebar:
         st.caption(f"GPU memory in use: {torch.cuda.memory_allocated() / 2**30:.1f} GiB")
 
 st.title("Quillmark Support Assistant")
-st.caption("Fictional bank · answers come from the policy handbook, known incidents and past cases · "
-           "Qwen3.5-4B running locally")
+st.caption("Fictional bank · answers come from the policy handbook, known incidents, past cases and the case "
+           "database · Qwen3.5-4B running locally")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
