@@ -11,6 +11,8 @@ HANDBOOK_PATH = ROOT / "policy_handbook.md"
 SCHEMA_PATH = ROOT / "db" / "schema.sql"
 
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3.5-4B")
+# The model already quantized to 4-bit, saved locally by `python -m quillmark_bot.model`
+QUANTIZED_MODEL_DIR = ROOT / "data" / "models" / "qwen3.5-4b-nf4"
 
 INDEX_DIR = ROOT / "data" / "index"
 EMBED_MODEL_ID = os.getenv("EMBED_MODEL_ID", "BAAI/bge-base-en-v1.5")
