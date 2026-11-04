@@ -61,6 +61,22 @@ def case_only_numbers(answer: str, trusted: list[str], cases: list[str]) -> list
     return [f for f in _figures(answer) if _normalize(f) in case_known - trusted_known]
 
 
+AMOUNT_PLACEHOLDER = "[amount]"
+
+
+def mask_amounts(text: str, keep: set[str]) -> str:
+    """Replace dollar amounts with [amount], except those in `keep` (normalized figures, e.g. the handbook's).
+
+    Past cases are other customers' records: their purchase and refund amounts mean nothing for the
+    customer asking, and the model copied them into answers as the customer's own. Policy amounts
+    ($29 fee, $25 credit) are kept, since they are the same for everyone.
+    """
+    def replace(match: re.Match) -> str:
+        figure = match.group(0)
+        return figure if not figure.startswith("$") or _normalize(figure) in keep else AMOUNT_PLACEHOLDER
+    return NUMBER.sub(replace, text)
+
+
 def invalid_citations(cited: list[str], provided: set[str]) -> list[str]:
     return [doc_id for doc_id in cited if doc_id not in provided]
 

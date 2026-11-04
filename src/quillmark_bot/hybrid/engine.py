@@ -43,6 +43,7 @@ Past cases
 - Past cases show how similar situations were resolved. Use them as precedent, but the handbook decides: \
 if a past case and a policy disagree, follow the policy.
 - Past cases belong to other customers. Never present their amounts, dates or details as this customer's.
+- Their own amounts are hidden as [amount]. Describe what happened without them, and never fill one in.
 
 Database results
 - Figures about many cases (counts, totals, averages, shares) come only from the database results. Use \
@@ -83,6 +84,7 @@ class Trace:
     route: Route
     data: analytics.DataResult | None = None
     retrieval: Retrieval | None = None
+    case_texts: list[str] | None = None  # the past cases as the model saw them, amounts masked
     seconds_data: float = 0.0
 
 
@@ -95,6 +97,8 @@ class HybridChatbot:
         vocab = self.router.vocab
         self.coverage = f"cases opened {vocab.first_date} to {vocab.last_date}"
         self.knowledge_ids = set(ID_PATTERN.findall(self.answerer.knowledge))
+        # Amounts the handbook and incidents state; any other amount in a past case is that customer's own
+        self.policy_figures = checks.numbers_in(self.answerer.knowledge)
         self.last_trace: Trace | None = None
 
     def build_cache(self) -> None:
@@ -125,7 +129,8 @@ class HybridChatbot:
         if route.needs_cases:
             previous_question = [m["content"] for m in history if m["role"] == "user"][-1:]
             trace.retrieval = self.retriever.search(" ".join(previous_question + [question]), n_knowledge=0)
-            cases = "\n\n".join(hit.text for hit in trace.retrieval.cases)
+            trace.case_texts = [checks.mask_amounts(hit.text, self.policy_figures) for hit in trace.retrieval.cases]
+            cases = "\n\n".join(trace.case_texts)
             blocks.append(f"<past_cases>\n{cases}\n</past_cases>")
 
         content = "\n\n".join(blocks + [f"Customer question: {question}"])
@@ -143,7 +148,7 @@ class HybridChatbot:
         trusted += [m["content"] for m in history if m["role"] == "user"]  # not earlier answers: they could carry a slip
         if trace.data:
             trusted.append(trace.data.text)
-        cases = [hit.text for hit in trace.retrieval.cases] if trace.retrieval else []
+        cases = trace.case_texts or []
         answer.unverified_numbers = checks.unverified_numbers(answer.text, trusted + cases)
         answer.case_only_numbers = checks.case_only_numbers(answer.text, trusted, cases)
 

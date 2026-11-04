@@ -7,7 +7,7 @@ counted separately: a flagged figure can be honest arithmetic ("5% of $400 is $2
 
 Needs the GPU, the RAG index and Postgres (docker compose up -d).
 Usage:
-    python eval/run_eval.py [--only ID ...] [--category NAME ...]
+    python eval/run_eval.py [--questions FILE] [--only ID ...] [--category NAME ...]
     python eval/run_eval.py --rescore eval/results/<timestamp>.jsonl   # re-check saved answers, no GPU
 Results: eval/results/<timestamp>.jsonl and <timestamp>.summary.json (gitignored).
 """
@@ -32,6 +32,14 @@ from scoring import answer_problems, route_problems  # noqa: E402
 DEFAULT_TODAY = date(2026, 11, 3)
 
 
+def item_problems(item: dict, text: str, cited: list[str], case_only: list[str]) -> list[str]:
+    """scoring.answer_problems, plus `no_case_figures`: no figure taken from another customer's case."""
+    problems = answer_problems(item, text, cited)
+    if item.get("no_case_figures") and case_only:
+        problems.append(f"used other customers' figures: {', '.join(case_only)}")
+    return problems
+
+
 def run_item(bot: HybridChatbot, item: dict) -> dict:
     today = date.fromisoformat(item["today"]) if "today" in item else DEFAULT_TODAY
     history, previous, route_issues, seconds = [], None, [], 0.0
@@ -42,7 +50,7 @@ def run_item(bot: HybridChatbot, item: dict) -> dict:
         seconds += route.seconds + answer.seconds_total
         history += [{"role": "user", "content": turn["question"]}, {"role": "assistant", "content": answer.text}]
         previous = route.data_request
-    problems = answer_problems(item, answer.text, answer.cited_ids)
+    problems = item_problems(item, answer.text, answer.cited_ids, answer.case_only_numbers)
     return {
         "id": item["id"], "category": item["category"],
         "answer_ok": not problems, "route_ok": not route_issues,
@@ -79,7 +87,7 @@ def rescore(path: Path, items: dict) -> None:
     """Re-apply the current answer checks to saved answers; routes and flags are kept as they ran."""
     rows = [json.loads(line) for line in path.open(encoding="utf-8")]
     for row in rows:
-        row["answer_problems"] = answer_problems(items[row["id"]], row["answer"], row["cited"])
+        row["answer_problems"] = item_problems(items[row["id"]], row["answer"], row["cited"], row["case_only_numbers"])
         row["answer_ok"] = not row["answer_problems"]
         if row["answer_problems"]:
             print(f"FAIL  {row['id']:<24} {'; '.join(row['answer_problems'])}")
@@ -96,11 +104,13 @@ def main() -> None:
     parser.add_argument("--only", nargs="*", help="item IDs to run")
     parser.add_argument("--category", nargs="*", help="categories to run")
     parser.add_argument("--rescore", type=Path, help="re-check a saved results file with the current checks")
+    parser.add_argument("--questions", type=Path, default=EVAL_DIR / "questions.jsonl",
+                        help="question file (default: eval/questions.jsonl)")
     args = parser.parse_args()
 
-    items = [json.loads(line) for line in (EVAL_DIR / "questions.jsonl").open(encoding="utf-8")]
+    items = [json.loads(line) for line in args.questions.open(encoding="utf-8")]
     if args.rescore:
-        rescore(args.rescore, {i["id"]: i for i in items})
+        rescore(args.rescore, {i["id"]: i for i in items})  # pass --questions for a fresh-set results file
         return
     items = [i for i in items if (not args.only or i["id"] in args.only)
              and (not args.category or i["category"] in args.category)]
@@ -111,7 +121,7 @@ def main() -> None:
 
     results_dir = EVAL_DIR / "results"
     results_dir.mkdir(exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{args.questions.stem}"
     rows = []
     start = time.perf_counter()
     with (results_dir / f"{stamp}.jsonl").open("w", encoding="utf-8") as out:

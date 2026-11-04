@@ -1,6 +1,6 @@
 """Answer checks: numbers, citations and database tags. No GPU, no database."""
-from quillmark_bot.checks import (case_only_numbers, invalid_citations, normalize_database_tags, numbers_in,
-                                  unverified_numbers)
+from quillmark_bot.checks import (case_only_numbers, invalid_citations, mask_amounts, normalize_database_tags,
+                                  numbers_in, unverified_numbers)
 
 HANDBOOK = "### [POL-ACC-02] Overdraft fee of $29 per item over $50. Refund by 11:59 p.m. on the next business day."
 DATABASE = "Counted: outcomes, where issue = Goodwill request.\n- favorable: 46 cases (35% of 132)"
@@ -38,6 +38,16 @@ def test_another_customers_amount_is_flagged():
     answer = "Your duplicate charge of $446.52 will be reversed, with a $25 credit."
     assert unverified_numbers(answer, [HANDBOOK, "$25 goodwill credit", case]) == []  # found somewhere...
     assert case_only_numbers(answer, [HANDBOOK, "$25 goodwill credit"], [case]) == ["$446.52"]  # ...but only there
+
+
+def test_case_amounts_are_masked_but_policy_amounts_kept():
+    case = "Duplicate $446.52 will be reversed; overdraft fee ($29) reversed; $25 goodwill credit; 3 days."
+    masked = mask_amounts(case, numbers_in(HANDBOOK + " $25 goodwill credit"))
+    assert masked == "Duplicate [amount] will be reversed; overdraft fee ($29) reversed; $25 goodwill credit; 3 days."
+
+
+def test_ids_survive_masking():
+    assert mask_amounts("[QM-C-003098] refunded $355.09", set()) == "[QM-C-003098] refunded [amount]"
 
 
 def test_citations_must_have_been_provided():
