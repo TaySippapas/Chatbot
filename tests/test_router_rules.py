@@ -3,6 +3,7 @@ from datetime import date
 
 import pytest
 
+from quillmark_bot.analytics import DataRequest
 from quillmark_bot.router import Router
 
 TODAY = date(2026, 11, 3)
@@ -78,3 +79,12 @@ def test_short_follow_up_goes_to_llm(router):
     history = [{"role": "user", "content": "How many duplicate-charge complaints came from Bayside?"},
                {"role": "assistant", "content": "57."}]
     assert router.route("And in Riverton?", history, TODAY).decided_by == ASK_LLM
+
+
+def test_follow_up_to_an_llm_routed_data_question_goes_to_llm(router):
+    # The rules alone don't see "how often ... approved" as a data question; the previous query says it was
+    history = [{"role": "user", "content": "How often do goodwill requests get approved?"},
+               {"role": "assistant", "content": "35% of 132 were approved."}]
+    previous = DataRequest("outcome_breakdown", {"issue": ["Goodwill request"]})
+    assert router.route("And for credit limit increases?", history, TODAY).decided_by == "rules"
+    assert router.route("And for credit limit increases?", history, TODAY, previous).decided_by == ASK_LLM

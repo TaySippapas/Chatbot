@@ -40,7 +40,9 @@ customer. False for questions that only ask for statistics.
 - group_by: branch, product, category, issue, channel, outcome, incident_id, month, or null.
 - Dates: turn relative dates into date_from and date_to using today's date. "Recently" means the last \
 3 months. Leave both null when the question gives no period.
-- "Rule matcher found" lists values already recognised in the question; use them when they fit."""
+- "Rule matcher found" lists values already recognised in the question; use them when they fit.
+- "Previous query" is the database query behind the previous answer. A short follow-up usually keeps it \
+and changes only what the new question names."""
 
 EXAMPLES = [
     ("2026-11-03", None, "product = Spark Card", "What's the late fee on the Spark Card?",
@@ -88,9 +90,19 @@ EXAMPLES = [
 ]
 
 
-def user_message(question: str, previous: str | None, hints: str) -> str:
-    previous_line = f"Previous question: {previous}\n" if previous else ""
-    return f"{previous_line}Rule matcher found: {hints}\nQuestion: {question}"
+# The database query behind the previous answer in the follow-up example, so the model learns to carry it over
+EXAMPLE_PREVIOUS_QUERY = {"metric": "count", "filters": {"issue": ["Duplicate charge"], "branch": ["Bayside"]}}
+
+
+def compact(request: dict) -> str:
+    return json.dumps({k: v for k, v in request.items() if v})
+
+
+def user_message(question: str, previous: str | None, hints: str, previous_query: dict | None = None) -> str:
+    previous_lines = f"Previous question: {previous}\n" if previous else ""
+    if previous_query:
+        previous_lines += f"Previous query: {compact(previous_query)}\n"
+    return f"{previous_lines}Rule matcher found: {hints}\nQuestion: {question}"
 
 
 def router_prompt(vocab: Vocab) -> str:
@@ -101,7 +113,9 @@ def router_prompt(vocab: Vocab) -> str:
                        else ", ".join(values))
         for name, values in vocab.values.items())
     examples = "\n\n".join(
-        f"Today's date: {today}\n{user_message(question, previous, hints)}\n{json.dumps(form)}"
+        f"Today's date: {today}\n"
+        f"{user_message(question, previous, hints, EXAMPLE_PREVIOUS_QUERY if previous else None)}\n"
+        f"{json.dumps(form)}"
         for today, previous, hints, question, form in EXAMPLES)
     return f"{INSTRUCTIONS}\n\nAllowed values\n{allowed}\n\nExamples\n\n{examples}"
 
@@ -149,6 +163,8 @@ class LLMRouter:
     def build_cache(self) -> None:
         self.bot.build_cache()
 
-    def decide(self, question: str, previous: str | None, today: date, hints: str) -> Route:
-        answer = self.bot.ask(user_message(question, previous, hints), today=today)
+    def decide(self, question: str, previous: str | None, today: date, hints: str,
+               previous_request: DataRequest | None = None) -> Route:
+        previous_query = previous_request.to_dict() if previous_request else None
+        answer = self.bot.ask(user_message(question, previous, hints, previous_query), today=today)
         return parse_decision(answer.text, self.vocab)

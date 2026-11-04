@@ -33,7 +33,7 @@ VAGUE_TIME = re.compile(r"\b(recently|lately|these days|nowadays|a while ago)\b"
 OUTCOME_WORDS = re.compile(r"\b(approved|denied|granted|won|lost|declined|rejected|success(ful)?|approval|outcomes?)\b")
 REFUND = re.compile(r"\brefund(s|ed)?\b")
 GROUP_PATTERNS = [
-    (re.compile(r"\b(per|by|each|every) month\b|\bmonthly\b|\bover time\b|\btrend\b"), "month"),
+    (re.compile(r"\b(per|by|each|every) month\b|\bwhich months?\b|\bmonthly\b|\bover time\b|\btrend\b"), "month"),
     (re.compile(r"\bwhich branch(es)?\b|\b(per|by|each) branch\b|\bbranch(es)? with the most\b"), "branch"),
     (re.compile(r"\bwhich products?\b|\b(per|by|each) product\b"), "product"),
     (re.compile(r"\bwhich categor(y|ies)\b|\b(per|by|each) category\b|\bmost common categor(y|ies)\b"), "category"),

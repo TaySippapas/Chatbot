@@ -18,6 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
+from quillmark_bot.analytics import DataRequest  # noqa: E402
 from quillmark_bot.hybrid.engine import HybridChatbot  # noqa: E402
 from quillmark_bot.model import load_model  # noqa: E402
 from quillmark_bot.rag.documents import case_documents, knowledge_documents  # noqa: E402
@@ -81,7 +82,7 @@ def md(text: str) -> str:
     return text.replace("$", "\\$")
 
 
-def stream_answer(bot, question: str, history: list[dict], today: date, outcome: dict):
+def stream_answer(bot, question: str, history: list[dict], today: date, previous_request, outcome: dict):
     """Run bot.ask in a worker thread and yield its text as it is generated.
 
     The bot streams through a callback, while st.write_stream wants a generator; a queue joins the two.
@@ -92,7 +93,8 @@ def stream_answer(bot, question: str, history: list[dict], today: date, outcome:
     def work():
         try:
             with gpu_lock():
-                outcome["answer"] = bot.ask(question, history, on_text=chunks.put, today=today)
+                outcome["answer"] = bot.ask(question, history, on_text=chunks.put, today=today,
+                                            previous_request=previous_request)
                 outcome["trace"] = bot.last_trace
         except Exception as error:  # surfaced in the UI rather than dying silently in the thread
             outcome["error"] = error
@@ -111,6 +113,10 @@ def make_record(outcome: dict) -> dict:
     record = {
         "text": a.text,
         "cited": a.cited_ids,
+        "unverified_numbers": a.unverified_numbers,
+        "case_only_numbers": a.case_only_numbers,
+        "invalid_citations": a.invalid_citations,
+        "request": route.data_request.to_dict() if route.data_request else None,
         "stats": (f"route {route.seconds:.1f} s · read {a.computed_prompt_tokens:,} new tokens "
                   f"({a.cached_tokens:,} from cache) · first word {a.seconds_to_first_token:.1f} s · "
                   f"{a.seconds_total:.1f} s answering"),
@@ -129,6 +135,14 @@ def make_record(outcome: dict) -> dict:
 
 
 def show_details(record: dict) -> None:
+    if record.get("unverified_numbers"):
+        st.warning("Check these figures: they aren't in the handbook, the past cases or the database "
+                   f"results this answer was given: {md(', '.join(record['unverified_numbers']))}")
+    if record.get("case_only_numbers"):
+        st.warning("These figures appear only in other customers' past cases, so they shouldn't be read as "
+                   f"this customer's own amounts: {md(', '.join(record['case_only_numbers']))}")
+    if record.get("invalid_citations"):
+        st.warning(f"These citations weren't among the documents provided: {', '.join(record['invalid_citations'])}")
     st.caption(record["stats"])
     route = record["route"]
     with st.expander(f"How this was answered: {' + '.join(route['uses'])}"):
@@ -227,17 +241,24 @@ if not st.session_state.messages and not question:
 
 if question:
     turns = history()
+    # The previous answer's database query lets a short follow-up ("and in Riverton?") reuse it
+    last = st.session_state.messages[-1] if st.session_state.messages else {}
+    previous = (last.get("record") or {}).get("request")
+    previous_request = DataRequest(**previous) if previous else None
     st.session_state.messages.append({"role": "user", "content": question})
     with st.chat_message("user"):
         st.markdown(md(question))
 
     with st.chat_message("assistant"):
         outcome = {}
-        st.write_stream(stream_answer(bot, question, turns, today, outcome))
+        slot = st.empty()
+        with slot:
+            st.write_stream(stream_answer(bot, question, turns, today, previous_request, outcome))
         if "error" in outcome:
             message = {"role": "assistant", "error": f"Something went wrong: {outcome['error']}"}
             st.error(message["error"])
         else:
             message = {"role": "assistant", "record": make_record(outcome)}
+            slot.markdown(md(message["record"]["text"]))  # the checked text, e.g. with database tags unified
             show_details(message["record"])
     st.session_state.messages.append(message)

@@ -16,6 +16,7 @@ env/
 # Built artifacts (rebuild with python -m quillmark_bot.rag.index and python -m quillmark_bot.model)
 data/index/
 data/models/
+eval/results/
 
 # Tool caches
 .deepeval/

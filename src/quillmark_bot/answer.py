@@ -14,6 +14,9 @@ class Answer:
     seconds_total: float
     sources: list[str] = field(default_factory=list)  # IDs of documents retrieved into the prompt (RAG)
     seconds_retrieval: float = 0.0
+    unverified_numbers: list[str] = field(default_factory=list)  # figures found in nothing the model was given
+    case_only_numbers: list[str] = field(default_factory=list)   # figures found only in other customers' cases
+    invalid_citations: list[str] = field(default_factory=list)   # IDs cited that were not in the prompt
 
     @property
     def computed_prompt_tokens(self) -> int:

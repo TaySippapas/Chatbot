@@ -13,8 +13,8 @@ from datetime import date
 
 import torch
 
-from quillmark_bot import analytics
-from quillmark_bot.answer import Answer
+from quillmark_bot import analytics, checks
+from quillmark_bot.answer import ID_PATTERN, Answer
 from quillmark_bot.cag.engine import CAGChatbot
 from quillmark_bot.cag.knowledge import build_knowledge
 from quillmark_bot.rag.retriever import Retrieval, Retriever
@@ -94,6 +94,7 @@ class HybridChatbot:
         self.router = Router(llm=self.llm_router)
         vocab = self.router.vocab
         self.coverage = f"cases opened {vocab.first_date} to {vocab.last_date}"
+        self.knowledge_ids = set(ID_PATTERN.findall(self.answerer.knowledge))
         self.last_trace: Trace | None = None
 
     def build_cache(self) -> None:
@@ -103,10 +104,12 @@ class HybridChatbot:
 
     @torch.inference_mode()
     def ask(self, question: str, history: list[dict] | None = None, on_text=None,
-            today: date | None = None) -> Answer:
+            today: date | None = None, previous_request: analytics.DataRequest | None = None) -> Answer:
+        """`previous_request`: the database query behind the previous answer, so a short follow-up
+        ("and in Riverton?") can reuse it."""
         today = today or date.today()
         history = (history or [])[-MAX_HISTORY_MESSAGES:]
-        route = self.router.route(question, history, today)
+        route = self.router.route(question, history, today, previous_request)
         trace = Trace(route=route)
         blocks = []
 
@@ -129,5 +132,22 @@ class HybridChatbot:
         answer = self.answerer.ask(content, history, on_text, today)
         answer.sources = trace.retrieval.ids if trace.retrieval else []
         answer.seconds_retrieval = trace.retrieval.seconds if trace.retrieval else 0.0
+        self._check(answer, trace, question, history, today)
         self.last_trace = trace
         return answer
+
+    def _check(self, answer: Answer, trace: Trace, question: str, history: list[dict], today: date) -> None:
+        """Flag figures and citations the model wasn't given (see checks.py)."""
+        answer.text = checks.normalize_database_tags(answer.text)
+        trusted = [self.answerer.knowledge, question, today.isoformat()]
+        trusted += [m["content"] for m in history if m["role"] == "user"]  # not earlier answers: they could carry a slip
+        if trace.data:
+            trusted.append(trace.data.text)
+        cases = [hit.text for hit in trace.retrieval.cases] if trace.retrieval else []
+        answer.unverified_numbers = checks.unverified_numbers(answer.text, trusted + cases)
+        answer.case_only_numbers = checks.case_only_numbers(answer.text, trusted, cases)
+
+        provided = self.knowledge_ids | set(answer.sources)
+        if trace.data:
+            provided |= set(ID_PATTERN.findall(trace.data.text))
+        answer.invalid_citations = checks.invalid_citations(answer.cited_ids, provided)

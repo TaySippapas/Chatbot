@@ -25,9 +25,16 @@ def describe(trace) -> str:
 
 
 def stats(answer) -> str:
-    return (f"[read {answer.computed_prompt_tokens:,} new tokens, {answer.cached_tokens:,} from cache | "
-            f"first token {answer.seconds_to_first_token:.2f}s | {answer.output_tokens} tokens in "
-            f"{answer.seconds_total:.1f}s | cited {', '.join(answer.cited_ids) or 'nothing'}]")
+    lines = [f"[read {answer.computed_prompt_tokens:,} new tokens, {answer.cached_tokens:,} from cache | "
+             f"first token {answer.seconds_to_first_token:.2f}s | {answer.output_tokens} tokens in "
+             f"{answer.seconds_total:.1f}s | cited {', '.join(answer.cited_ids) or 'nothing'}]"]
+    if answer.unverified_numbers:
+        lines.append(f"[CHECK: figures not found in what the model was given: {', '.join(answer.unverified_numbers)}]")
+    if answer.case_only_numbers:
+        lines.append(f"[CHECK: figures only in other customers' cases: {', '.join(answer.case_only_numbers)}]")
+    if answer.invalid_citations:
+        lines.append(f"[CHECK: cited but not provided: {', '.join(answer.invalid_citations)}]")
+    return "\n".join(lines)
 
 
 def main() -> None:
@@ -42,8 +49,13 @@ def main() -> None:
     bot.build_cache()
     print("Ready.\n")
 
+    last_request = None  # the previous answer's database query, for follow-ups
+
     def answer(question: str, history: list[dict]):
-        result = bot.ask(question, history, on_text=lambda t: print(t, end="", flush=True))
+        nonlocal last_request
+        result = bot.ask(question, history, on_text=lambda t: print(t, end="", flush=True),
+                         previous_request=last_request)
+        last_request = bot.last_trace.route.data_request
         print(f"\n{describe(bot.last_trace)}\n{stats(result)}\n")
         return result
 
@@ -61,6 +73,7 @@ def main() -> None:
             break
         if question == "/reset":
             history.clear()
+            last_request = None
             print("History cleared.\n")
             continue
         if question:

@@ -6,10 +6,15 @@ to QUANTIZED_MODEL_DIR (~3 GB) and loaded from there afterwards.
 
 Usage: python -m quillmark_bot.model   (one-time: quantize and save the local copy)
 """
+import gc
+import time
+
 import torch
 from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
 
 from quillmark_bot.config import MODEL_ID, QUANTIZED_MODEL_DIR
+
+LOAD_ATTEMPTS = 3
 
 
 def _quantize(model_id: str):
@@ -26,16 +31,32 @@ def _quantize(model_id: str):
     return model, processor
 
 
+def _load_saved():
+    processor = AutoProcessor.from_pretrained(QUANTIZED_MODEL_DIR)
+    # The saved config carries its own quantization settings; passing quantization_config here
+    # (even None) would make transformers ignore them
+    model = AutoModelForImageTextToText.from_pretrained(QUANTIZED_MODEL_DIR, device_map="auto", dtype=torch.bfloat16)
+    return model, processor
+
+
 def load_model(model_id: str = MODEL_ID):
-    """The 4-bit model and its processor, from the local copy when it exists."""
-    if model_id == MODEL_ID and (QUANTIZED_MODEL_DIR / "config.json").exists():
-        processor = AutoProcessor.from_pretrained(QUANTIZED_MODEL_DIR)
-        # The saved config carries its own quantization settings; passing quantization_config here
-        # (even None) would make transformers ignore them
-        model = AutoModelForImageTextToText.from_pretrained(QUANTIZED_MODEL_DIR, device_map="auto",
-                                                            dtype=torch.bfloat16)
-        return model, processor
-    return _quantize(model_id)
+    """The 4-bit model and its processor, from the local copy when it exists.
+
+    On Windows, GPU memory also counts against the virtual memory limit, so on a busy machine a load
+    can fail with "The paging file is too small" (os error 1455) and succeed moments later. Such a
+    failure is retried after releasing what was loaded; any other error is raised at once.
+    """
+    load = _load_saved if model_id == MODEL_ID and (QUANTIZED_MODEL_DIR / "config.json").exists() \
+        else lambda: _quantize(model_id)
+    for attempt in range(1, LOAD_ATTEMPTS + 1):
+        try:
+            return load()
+        except OSError as error:
+            if "1455" not in str(error) or attempt == LOAD_ATTEMPTS:
+                raise
+            gc.collect()
+            torch.cuda.empty_cache()
+            time.sleep(5)
 
 
 def save_quantized() -> None:
