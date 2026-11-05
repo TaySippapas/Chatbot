@@ -10,6 +10,7 @@ import gc
 import queue
 import sys
 import threading
+import uuid
 from datetime import date
 from pathlib import Path
 
@@ -18,6 +19,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
+from quillmark_bot import monitoring  # noqa: E402
 from quillmark_bot.analytics import DataRequest  # noqa: E402
 from quillmark_bot.hybrid.engine import HybridChatbot  # noqa: E402
 from quillmark_bot.model import load_model  # noqa: E402
@@ -59,6 +61,17 @@ def load_bot() -> HybridChatbot:
                  "memory (RAM + page file). Close a few programs, or give Windows a larger page file, "
                  "then ask again.")
         st.stop()
+
+
+@st.cache_resource
+def monitoring_ready() -> bool:
+    """Create the monitoring tables once per server; False (no logging) if Postgres is down."""
+    return monitoring.ensure_schema()
+
+
+def save_feedback(interaction_id: int) -> None:
+    value = st.session_state.get(f"feedback-{interaction_id}")  # st.feedback: 1 thumbs up, 0 down, None cleared
+    monitoring.set_feedback(interaction_id, None if value is None else (1 if value == 1 else -1))
 
 
 @st.cache_resource
@@ -166,6 +179,9 @@ def show_details(record: dict) -> None:
             for doc_id, score in record["retrieved"]:
                 first_line = docs.get(doc_id, "").splitlines()[0]
                 st.markdown(f"`{doc_id}` · score {score:.2f} · {md(first_line)}")
+    if record.get("interaction_id"):
+        key = f"feedback-{record['interaction_id']}"
+        st.feedback("thumbs", key=key, on_change=save_feedback, args=(record["interaction_id"],))
     if record["cited"]:
         docs = documents_by_id()
         with st.expander(f"Cited: {', '.join(record['cited'])}"):
@@ -191,6 +207,7 @@ def history() -> list[dict]:
 
 st.set_page_config(page_title="Quillmark Support", page_icon="🏦")
 st.session_state.setdefault("messages", [])
+st.session_state.setdefault("session_id", uuid.uuid4().hex)  # groups one browser tab's questions in the logs
 
 with st.sidebar:
     st.header("Settings")
@@ -254,11 +271,18 @@ if question:
         slot = st.empty()
         with slot:
             st.write_stream(stream_answer(bot, question, turns, today, previous_request, outcome))
+        logging_on = monitoring_ready()
+        session_id = st.session_state.session_id
         if "error" in outcome:
             message = {"role": "assistant", "error": f"Something went wrong: {outcome['error']}"}
+            if logging_on:
+                monitoring.log_interaction("app", question, session_id=session_id, error=str(outcome["error"]))
             st.error(message["error"])
         else:
             message = {"role": "assistant", "record": make_record(outcome)}
+            if logging_on:
+                message["record"]["interaction_id"] = monitoring.log_interaction(
+                    "app", question, outcome["answer"], outcome["trace"], session_id)
             slot.markdown(md(message["record"]["text"]))  # the checked text, e.g. with database tags unified
             show_details(message["record"])
     st.session_state.messages.append(message)

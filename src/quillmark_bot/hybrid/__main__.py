@@ -7,7 +7,9 @@ Usage:
 Needs the RAG index (python -m quillmark_bot.rag.index) and, for figures, Postgres (docker compose up -d).
 """
 import argparse
+import uuid
 
+from quillmark_bot import monitoring
 from quillmark_bot.hybrid.engine import HybridChatbot
 from quillmark_bot.model import load_model
 from quillmark_bot.rag.retriever import Retriever
@@ -50,12 +52,16 @@ def main() -> None:
     print("Ready.\n")
 
     last_request = None  # the previous answer's database query, for follow-ups
+    logging_on = monitoring.ensure_schema()
+    session_id = uuid.uuid4().hex
 
     def answer(question: str, history: list[dict]):
         nonlocal last_request
         result = bot.ask(question, history, on_text=lambda t: print(t, end="", flush=True),
                          previous_request=last_request)
         last_request = bot.last_trace.route.data_request
+        if logging_on:
+            monitoring.log_interaction("cli", question, result, bot.last_trace, session_id)
         print(f"\n{describe(bot.last_trace)}\n{stats(result)}\n")
         return result
 

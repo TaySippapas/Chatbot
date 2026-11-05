@@ -24,6 +24,7 @@ EVAL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVAL_DIR.parent / "src"))
 sys.path.insert(0, str(EVAL_DIR))
 
+from quillmark_bot import monitoring  # noqa: E402
 from quillmark_bot.hybrid.engine import HybridChatbot  # noqa: E402
 from quillmark_bot.model import load_model  # noqa: E402
 from quillmark_bot.rag.retriever import Retriever  # noqa: E402
@@ -40,12 +41,15 @@ def item_problems(item: dict, text: str, cited: list[str], case_only: list[str])
     return problems
 
 
-def run_item(bot: HybridChatbot, item: dict) -> dict:
+def run_item(bot: HybridChatbot, item: dict, session_id: str | None = None) -> dict:
+    """`session_id`: when given, each turn is also recorded for the dashboard (source "eval")."""
     today = date.fromisoformat(item["today"]) if "today" in item else DEFAULT_TODAY
     history, previous, route_issues, seconds = [], None, [], 0.0
     for turn in item["turns"]:
         answer = bot.ask(turn["question"], history, today=today, previous_request=previous)
         route = bot.last_trace.route
+        if session_id:
+            monitoring.log_interaction("eval", turn["question"], answer, bot.last_trace, session_id)
         route_issues += route_problems(route, turn.get("route"))
         seconds += route.seconds + answer.seconds_total
         history += [{"role": "user", "content": turn["question"]}, {"role": "assistant", "content": answer.text}]
@@ -122,11 +126,12 @@ def main() -> None:
     results_dir = EVAL_DIR / "results"
     results_dir.mkdir(exist_ok=True)
     stamp = f"{datetime.now():%Y%m%d-%H%M%S}-{args.questions.stem}"
+    session_id = f"eval-{stamp}" if monitoring.ensure_schema() else None
     rows = []
     start = time.perf_counter()
     with (results_dir / f"{stamp}.jsonl").open("w", encoding="utf-8") as out:
         for n, item in enumerate(items, 1):
-            row = run_item(bot, item)
+            row = run_item(bot, item, session_id)
             rows.append(row)
             out.write(json.dumps(row, ensure_ascii=False) + "\n")
             flags = (row["unverified_numbers"] + [f"{n} (cases only)" for n in row["case_only_numbers"]]
@@ -138,6 +143,8 @@ def main() -> None:
 
     summary = summarize(rows, stamp, round((time.perf_counter() - start) / 60, 1))
     (results_dir / f"{stamp}.summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    if session_id and not (args.only or args.category):  # only full runs are comparable over time
+        monitoring.log_eval_run(summary, rows, args.questions.name)
     print("\n" + json.dumps(summary, indent=2))
 
 

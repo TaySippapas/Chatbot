@@ -1,0 +1,945 @@
+{
+  "uid": "quillmark-overview",
+  "title": "Quillmark chatbot",
+  "tags": [
+    "quillmark"
+  ],
+  "description": "How the support chatbot is used, how fast it answers, how its safeguards fire and how it scores in evaluations.",
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "source",
+        "label": "Source",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "quillmark-pg"
+        },
+        "query": "SELECT DISTINCT source FROM interactions ORDER BY 1",
+        "definition": "SELECT DISTINCT source FROM interactions ORDER BY 1",
+        "multi": true,
+        "includeAll": true,
+        "allValue": "'app','cli','eval'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Questions",
+      "description": "Questions answered (or failed) in the selected time range.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT count(*) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "First word (median)",
+      "description": "Time from sending a question to the first word of the answer.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY seconds_first_token) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "\u2013",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Total time (median)",
+      "description": "Routing + database + case search + writing the whole answer.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY (seconds_route + coalesce(seconds_data, 0) + coalesce(seconds_retrieval, 0) + seconds_answer)) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "\u2013",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Answers flagged",
+      "description": "Share of answers with a figure or citation the safeguards could not back.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE (cardinality(unverified_figures) > 0 OR cardinality(case_only_figures) > 0 OR cardinality(invalid_citations) > 0)) / NULLIF(count(*), 0) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "\u2013",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 15
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Failed questions",
+      "description": "Questions that ended in an error instead of an answer.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT count(*) FILTER (WHERE error IS NOT NULL) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "noValue": "0",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Rated helpful",
+      "description": "Share of thumbs up among answers that got a thumbs up or down in the app.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE feedback = 1) / NULLIF(count(feedback), 0) FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source)"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "\u2013",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 60
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Response time",
+      "description": "Median and 90th percentile per time bucket.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), percentile_cont(0.5) WITHIN GROUP (ORDER BY seconds_first_token) AS \"first word, median\", percentile_cont(0.9) WITHIN GROUP (ORDER BY seconds_first_token) AS \"first word, 90th pct\", percentile_cont(0.5) WITHIN GROUP (ORDER BY (seconds_route + coalesce(seconds_data, 0) + coalesce(seconds_retrieval, 0) + seconds_answer)) AS \"total, median\", percentile_cont(0.9) WITHIN GROUP (ORDER BY (seconds_route + coalesce(seconds_data, 0) + coalesce(seconds_retrieval, 0) + seconds_answer)) AS \"total, 90th pct\" FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 6,
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Sources used",
+      "description": "The handbook is always used; the router adds past cases and/or the case database.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), CASE WHEN used_database AND used_cases THEN 'handbook + database + cases' WHEN used_database THEN 'handbook + database' WHEN used_cases THEN 'handbook + cases' ELSE 'handbook only' END AS metric, count(*) AS value FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL GROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "pointSize": 6,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "piechart",
+      "title": "Who decided the route",
+      "description": "Rules decide clear questions in about a millisecond; the LLM fills a form for the rest (about 4-5 s).",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT decided_by, count(*) AS questions FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND decided_by IS NOT NULL GROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": true
+        },
+        "pieType": "donut",
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Safeguard flags",
+      "description": "Answers with a figure backed by nothing given, a figure only from other customers' cases, or a citation of a document not provided.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), count(*) FILTER (WHERE cardinality(unverified_figures) > 0) AS \"unbacked figure\", count(*) FILTER (WHERE cardinality(case_only_figures) > 0) AS \"other customer's figure\", count(*) FILTER (WHERE cardinality(invalid_citations) > 0) AS \"citation not provided\" FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) AND error IS NULL GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "pointSize": 6,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Feedback",
+      "description": "Thumbs up and down given in the app.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 12,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT $__timeGroupAlias(created_at, $__interval), count(*) FILTER (WHERE feedback = 1) AS \"helpful\", count(*) FILTER (WHERE feedback = -1) AS \"not helpful\" FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) GROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "pointSize": 6,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Evaluation score",
+      "description": "Share of answers correct in each full evaluation run, per question set.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "time_series",
+          "rawSql": "SELECT created_at AS time, question_file AS metric, round(100.0 * answers_correct / questions, 1) AS value FROM eval_runs WHERE $__timeFilter(created_at) ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 6,
+            "showPoints": "always",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Evaluation runs",
+      "description": "Every full run of eval/run_eval.py, newest first. A commit ending in -dirty had uncommitted changes.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT created_at AS \"run\", git_commit AS \"commit\", question_file AS \"questions\", answers_correct || '/' || questions AS \"answers\", routes_correct || '/' || questions AS \"routes\", answers_with_unverified_figures + answers_with_case_only_figures + answers_with_invalid_citations AS \"flagged\", median_seconds AS \"median s\" FROM eval_runs ORDER BY created_at DESC LIMIT 20"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Failing in the latest evaluation",
+      "description": "Questions that failed in the most recent run of each question set.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT r.question_file AS \"set\", e.item_id AS \"question\", e.category, array_to_string(e.problems, '; ') AS \"problems\" FROM eval_results e JOIN eval_runs r ON r.id = e.run_id WHERE r.id IN (SELECT max(id) FROM eval_runs GROUP BY question_file) AND NOT (e.answer_ok AND e.route_ok) ORDER BY 1, 2"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Recent questions",
+      "description": "Newest first, with how each was answered.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "quillmark-pg"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "quillmark-pg"
+          },
+          "editorMode": "code",
+          "rawQuery": true,
+          "format": "table",
+          "rawSql": "SELECT created_at AS \"time\", source, question, CASE WHEN used_database AND used_cases THEN 'handbook + database + cases' WHEN used_database THEN 'handbook + database' WHEN used_cases THEN 'handbook + cases' ELSE 'handbook only' END AS \"sources used\", decided_by AS \"route by\", round((seconds_route + coalesce(seconds_data, 0) + coalesce(seconds_retrieval, 0) + seconds_answer)::numeric, 1) AS \"total s\", array_to_string(unverified_figures || case_only_figures || invalid_citations, ', ') AS \"flagged\", CASE feedback WHEN 1 THEN 'helpful' WHEN -1 THEN 'not helpful' END AS \"feedback\", error FROM interactions WHERE $__timeFilter(created_at) AND source IN ($source) ORDER BY created_at DESC LIMIT 50"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": true
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

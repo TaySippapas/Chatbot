@@ -1,0 +1,9 @@
+# Loads every dashboard JSON in monitoring/grafana/dashboards (mounted at /etc/grafana/dashboards)
+apiVersion: 1
+providers:
+  - name: Quillmark
+    folder: Quillmark
+    type: file
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards

@@ -17,5 +17,29 @@ services:
       timeout: 3s
       retries: 10
 
+  # Dashboard of the chatbot's usage, speed, safeguards and evaluation scores: http://localhost:3000
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: quillmark-grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # Anyone on this machine can view without logging in; editing needs the admin login
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/quillmark.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:-grafana_reader}
+      POSTGRES_DB: ${POSTGRES_DB:-quillmark}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
 volumes:
   pgdata:
+  grafana-data:

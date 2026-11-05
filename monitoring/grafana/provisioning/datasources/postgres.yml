@@ -1,0 +1,17 @@
+# Grafana reads the chatbot's monitoring tables through a login that can only SELECT
+# (created by `python -m quillmark_bot.monitoring` or `python -m quillmark_bot.data.build_db`).
+apiVersion: 1
+datasources:
+  - name: Quillmark Postgres
+    uid: quillmark-pg
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: grafana_reader
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      postgresVersion: 1600
+    isDefault: true
+    editable: false

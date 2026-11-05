@@ -5,6 +5,7 @@ Usage: python -m quillmark_bot.data.build_db
 import psycopg
 from psycopg.types.json import Jsonb
 
+from quillmark_bot import monitoring
 from quillmark_bot.config import CASES_PATH, HANDBOOK_PATH, SCHEMA_PATH, database_url
 from quillmark_bot.data.incidents import REFRESH_INCIDENT_STATS, ROOT_CAUSES
 from quillmark_bot.data.load import load_cases, load_policies
@@ -50,6 +51,9 @@ def main() -> None:
         for table in ("policies", "incidents", "cases", "case_policies"):
             cur.execute(f"SELECT count(*) FROM {table}")
             print(f"{table:<14} {cur.fetchone()[0]:>6,} rows")
+
+    # The monitoring tables live alongside (and survive this rebuild); make sure they and Grafana's login exist
+    monitoring.ensure_schema()
 
 
 if __name__ == "__main__":
