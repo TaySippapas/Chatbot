@@ -57,10 +57,11 @@ class CAGChatbot:
 
     @torch.inference_mode()
     def ask(self, question: str, history: list[dict] | None = None, on_text=None,
-            today: date | None = None, use_cache: bool = True) -> Answer:
+            today: date | None = None, use_cache: bool = True, should_stop=None) -> Answer:
         """Answer one question. `history` is prior {"role", "content"} turns, oldest first.
 
         use_cache=False reads the whole prompt from scratch, for comparing against plain prompting.
+        should_stop: optional callable; once it returns true, generation ends at the next token.
         """
         if use_cache and self.prefix_cache is None:
             self.build_cache()
@@ -85,4 +86,4 @@ class CAGChatbot:
             cache = prefill(self.model, input_ids[:, cached:-1], cache)
 
         return generate_answer(self.model, self.tokenizer, input_ids, cache, cached,
-                               self.max_new_tokens, on_text, start)
+                               self.max_new_tokens, on_text, start, should_stop)

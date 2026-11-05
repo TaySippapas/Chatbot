@@ -2,7 +2,7 @@
 import time
 
 import torch
-from transformers import TextStreamer
+from transformers import StoppingCriteria, StoppingCriteriaList, TextStreamer
 
 from quillmark_bot.answer import Answer
 
@@ -28,6 +28,16 @@ class TimedStreamer(TextStreamer):
             self.on_text(text)
 
 
+class _StopWhen(StoppingCriteria):
+    """Ends generation at the next token once `should_stop()` turns true (e.g. the user pressed Stop)."""
+
+    def __init__(self, should_stop):
+        self.should_stop = should_stop
+
+    def __call__(self, input_ids, scores, **kwargs) -> torch.BoolTensor:
+        return torch.full((input_ids.shape[0],), bool(self.should_stop()), dtype=torch.bool, device=input_ids.device)
+
+
 def render_chat(tokenizer, messages: list[dict], enable_thinking: bool = False) -> str:
     return tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
@@ -51,11 +61,12 @@ def prefill(model, input_ids: torch.Tensor, cache=None):
 
 @torch.inference_mode()
 def generate_answer(model, tokenizer, input_ids: torch.Tensor, cache, cached_tokens: int,
-                    max_new_tokens: int, on_text=None, start: float | None = None) -> Answer:
+                    max_new_tokens: int, on_text=None, start: float | None = None, should_stop=None) -> Answer:
     """Generate greedily from `input_ids`, reusing `cache` for the tokens it already holds.
 
     `cached_tokens` is what gets reported as served from a reusable cache; `start` lets the caller
-    count its own prompt reading in the time to first token.
+    count its own prompt reading in the time to first token; `should_stop()` returning true ends
+    generation early (the answer is then marked `stopped`).
     """
     streamer = TimedStreamer(tokenizer, on_text)
     start = start or time.perf_counter()
@@ -66,6 +77,7 @@ def generate_answer(model, tokenizer, input_ids: torch.Tensor, cache, cached_tok
         max_new_tokens=max_new_tokens,
         do_sample=False, temperature=None, top_p=None, top_k=None,
         streamer=streamer,
+        stopping_criteria=StoppingCriteriaList([_StopWhen(should_stop)]) if should_stop else None,
     )
     total = time.perf_counter() - start
 
@@ -79,4 +91,5 @@ def generate_answer(model, tokenizer, input_ids: torch.Tensor, cache, cached_tok
         output_tokens=len(new_tokens),
         seconds_to_first_token=(streamer.first_token_at or time.perf_counter()) - start,
         seconds_total=total,
+        stopped=bool(should_stop and should_stop()),
     )

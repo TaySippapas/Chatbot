@@ -108,13 +108,21 @@ class HybridChatbot:
 
     @torch.inference_mode()
     def ask(self, question: str, history: list[dict] | None = None, on_text=None,
-            today: date | None = None, previous_request: analytics.DataRequest | None = None) -> Answer:
+            today: date | None = None, previous_request: analytics.DataRequest | None = None,
+            on_event=None, should_stop=None) -> Answer:
         """`previous_request`: the database query behind the previous answer, so a short follow-up
-        ("and in Riverton?") can reuse it."""
+        ("and in Riverton?") can reuse it.
+
+        `on_event(name, value)` reports each stage as it finishes, so a UI can show progress before the
+        first word: "route" (Route), "data" (DataResult), "cases" (Retrieval), then "writing" (None).
+        `should_stop()` returning true ends generation early.
+        """
+        emit = on_event or (lambda name, value: None)
         today = today or date.today()
         history = (history or [])[-MAX_HISTORY_MESSAGES:]
         route = self.router.route(question, history, today, previous_request)
         trace = Trace(route=route)
+        emit("route", route)
         blocks = []
 
         start = time.perf_counter()
@@ -124,17 +132,20 @@ class HybridChatbot:
             trace.data = analytics.run(route.data_request, self.coverage)
         trace.seconds_data = time.perf_counter() - start
         if trace.data:
+            emit("data", trace.data)
             blocks.append(f"<database_results>\n{trace.data.text}\n</database_results>")
 
         if route.needs_cases:
             previous_question = [m["content"] for m in history if m["role"] == "user"][-1:]
             trace.retrieval = self.retriever.search(" ".join(previous_question + [question]), n_knowledge=0)
             trace.case_texts = [checks.mask_amounts(hit.text, self.policy_figures) for hit in trace.retrieval.cases]
+            emit("cases", trace.retrieval)
             cases = "\n\n".join(trace.case_texts)
             blocks.append(f"<past_cases>\n{cases}\n</past_cases>")
 
         content = "\n\n".join(blocks + [f"Customer question: {question}"])
-        answer = self.answerer.ask(content, history, on_text, today)
+        emit("writing", None)
+        answer = self.answerer.ask(content, history, on_text, today, should_stop=should_stop)
         answer.sources = trace.retrieval.ids if trace.retrieval else []
         answer.seconds_retrieval = trace.retrieval.seconds if trace.retrieval else 0.0
         self._check(answer, trace, question, history, today)
